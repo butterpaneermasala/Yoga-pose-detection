@@ -1,0 +1,129 @@
+/* Container */
+.yoga-container {
+    background: linear-gradient(135deg, #6a11cb, #2575fc); /* soft purple-blue gradient */
+    min-width: 100vw;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative;
+    padding-top: 50px;
+    font-family: 'Raleway', sans-serif;
+    overflow-x: hidden;
+    color: #fff;
+}
+
+/* Secondary Buttons */
+.secondary-btn {
+    position: relative;
+    left: 0;
+    padding: 12px 28px;
+    border-radius: 25px;
+    border: 2px solid rgba(255,255,255,0.4);
+    background-color: rgba(255,255,255,0.1);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin: 15px;
+    z-index: 10;
+}
+
+.secondary-btn:hover {
+    background-color: rgba(255,255,255,0.25);
+    box-shadow: 0px 8px 20px rgba(0,0,0,0.2);
+    z-index: 11;
+}
+
+/* Countdown Circle */
+.starting-contdown {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 40px auto;
+    border: 8px solid rgba(255,255,255,0.3);
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background-color: rgba(255,255,255,0.05);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    animation: pulse 2s infinite;
+}
+
+.starting-contdown h1 {
+    color: #fff;
+    font-size: 2rem;
+    text-align: center;
+}
+
+/* Pulse Animation for Countdown */
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+/* Pose Image */
+.pose-img {
+    position: absolute;
+    right: 50px;
+    top: 100px;
+    width: 400px;
+    aspect-ratio: 1;
+    border-radius: 20px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+    transition: transform 0.5s ease, box-shadow 0.5s ease;
+}
+
+.pose-img:hover {
+    transform: scale(1.05);
+    box-shadow: 0 12px 35px rgba(0,0,0,0.5);
+}
+
+/* Performance Container */
+.performance-container {
+    display: flex;
+    gap: 20px;
+    position: absolute;
+    bottom: 30px;
+    left: 50px;
+}
+
+/* Individual Pose Performance Card */
+.pose-performance {
+    background-color: rgba(255,255,255,0.1);
+    padding: 12px 20px;
+    border-radius: 15px;
+    backdrop-filter: blur(5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    transition: transform 0.3s ease;
+}
+
+.pose-performance h4 {
+    color: #fff;
+    font-weight: 600;
+}
+
+.pose-performance:hover {
+    transform: translateY(-3px);
+}
+
+/* Webcam & Canvas Flip */
+#webcam,
+#my-canvas {
+    transform: rotateY(180deg);
+    border-radius: 15px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    transition: all 0.3s ease;
+}
+
+/* Smooth responsive adjustments */
+@media (max-width: 1200px) {
+    .pose-img { width: 300px; right: 30px; top: 120px; }
+}
+
+@media (max-width: 900px) {
+    .performance-container { flex-direction: column; left: 20px; bottom: 20px; }
+    .pose-img { position: relative; margin: 20px auto; width: 80%; top: 0; right: 0; }
+    .starting-contdown { width: 120px; height: 120px; }
+}

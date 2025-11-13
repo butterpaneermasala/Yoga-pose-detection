@@ -1,0 +1,61 @@
+# ------------------------
+# Node / Frontend
+# ------------------------
+node_modules/
+dist/
+build/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+*.log.*
+debug.log
+error.log
+
+# ------------------------
+# Python / ML Model
+# ------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+
+# Model weights & datasets
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.onnx
+*.pb
+*.tflite
+*.csv
+*.npz
+*.npy
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ------------------------
+# OS / Editor
+# ------------------------
+.DS_Store
+Thumbs.db
+
+# VS Code settings
+.vscode/

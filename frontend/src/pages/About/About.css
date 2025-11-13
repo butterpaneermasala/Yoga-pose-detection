@@ -1,0 +1,63 @@
+.about-container {
+    width: 100%;
+    min-height: 100vh;
+    background-color: #f4f7f6; /* A soft, calming off-white/grey */
+    padding: 40px 20px;
+    box-sizing: border-box;
+    font-family: 'Nunito Sans', sans-serif; /* A clean, friendly font */
+}
+
+.about-heading {
+    font-size: 48px;
+    text-align: center;
+    padding-bottom: 20px;
+    color: #2c3e50; /* A deep, muted blue */
+    font-family: 'Raleway', sans-serif;
+    font-weight: 700;
+}
+
+.about-main {
+    margin: 0 auto;
+    max-width: 800px;
+    background: #ffffff;
+    padding: 30px 40px;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+}
+
+.about-content {
+    color: #555; /* A softer grey for body text */
+    font-size: 17px;
+    line-height: 1.7; /* Improved readability */
+}
+
+.developer-info {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0; /* A subtle separator */
+}
+
+.developer-info h4 {
+    color: #34495e; /* Another muted blue */
+    font-family: 'Raleway', sans-serif;
+    margin-top: 20px;
+    font-size: 20px;
+    text-decoration: none; /* Removing the underline for a cleaner look */
+}
+
+.about-content a,
+.developer-info a {
+    color: #3498db; /* A calm, accessible blue for links */
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.developer-info a p {
+    margin: 8px 0;
+}
+
+.about-content a:hover,
+.developer-info a:hover {
+    color: #2980b9;
+    text-decoration: underline;
+}
