@@ -40,10 +40,8 @@ venv/
 .venv/
 
 # ML model files (large)
-*.h5
-*.hdf5
-*.keras
-*.tflite
+
+
 *.pb
 *.bin
 *.pt
