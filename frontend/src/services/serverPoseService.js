@@ -3,7 +3,7 @@
  * Sends camera frames to FastAPI server for more accurate detection
  */
 
-const SERVER_URL = 'http://172.16.142.231:8000';
+const SERVER_URL = 'https://satyaorz-yoga-pose-detection.hf.space';
 
 export async function detectPoseOnServer(imageData) {
   try {
@@ -16,6 +16,7 @@ export async function detectPoseOnServer(imageData) {
       body: formData,
       headers: {
         'Accept': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
       },
     });
     
@@ -43,6 +44,7 @@ export async function checkServerHealth() {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
       },
     });
     

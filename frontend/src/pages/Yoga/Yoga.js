@@ -44,6 +44,10 @@ function Yoga() {
   const [detectionStatus, setDetectionStatus] = useState('Waiting...')
   const [useServer, setUseServer] = useState(true) // Server mode by default
   const [serverAvailable, setServerAvailable] = useState(false)
+  const [confidence, setConfidence] = useState(0) // Pose confidence percentage
+  const [isLoading, setIsLoading] = useState(false) // Server processing indicator
+  const [facingMode, setFacingMode] = useState('user') // 'user' or 'environment'
+  const [errorMessage, setErrorMessage] = useState('')
 
   
   useEffect(() => {
@@ -152,7 +156,8 @@ function Yoga() {
       }, 400)  // Increased to 400ms for smooth mobile performance (~2.5 FPS)
     } catch (error) {
       console.error('Error initializing pose detection:', error)
-      alert('Error loading AI models. Please check your internet connection and try again.')
+      setErrorMessage('Failed to load AI models. Please check your internet connection.')
+      setTimeout(() => setErrorMessage(''), 5000)
     }
   }
 
@@ -220,19 +225,32 @@ function Yoga() {
 
         classification.array().then((data) => {         
           const classNo = CLASS_NO[currentPose]
-          console.log(data[0][classNo])
-          if(data[0][classNo] > 0.97) {
-            
+          const poseConfidence = data[0][classNo] * 100 // Convert to percentage
+          setConfidence(Math.round(poseConfidence))
+          console.log('Confidence:', poseConfidence.toFixed(1) + '%')
+          
+          // Color-coded skeleton based on confidence
+          if(poseConfidence >= 97) {
+            skeletonColor = 'rgb(0,255,0)' // Green - Perfect!
             if(!flag) {
               countAudio.play()
               setStartingTime(new Date(Date()).getTime())
               flag = true
             }
-            setCurrentTime(new Date(Date()).getTime()) 
-            skeletonColor = 'rgb(0,255,0)'
-          } else {
+            setCurrentTime(new Date(Date()).getTime())
+          } else if(poseConfidence >= 80) {
+            skeletonColor = 'rgb(255,165,0)' // Orange - Almost there
             flag = false
-            skeletonColor = 'rgb(255,255,255)'
+            countAudio.pause()
+            countAudio.currentTime = 0
+          } else if(poseConfidence >= 50) {
+            skeletonColor = 'rgb(255,255,0)' // Yellow - Getting close
+            flag = false
+            countAudio.pause()
+            countAudio.currentTime = 0
+          } else {
+            skeletonColor = 'rgb(255,255,255)' // White - Try again
+            flag = false
             countAudio.pause()
             countAudio.currentTime = 0
           }
@@ -247,18 +265,26 @@ function Yoga() {
 
   function startYoga(){
     setIsStartPose(true)
+    setErrorMessage('') // Clear any previous errors
     if (useServer) {
       // Check server availability first
       checkServerHealth().then(available => {
         setServerAvailable(available);
         if (available) {
           console.log('Using server-based detection');
+          setErrorMessage('');
           runServerDetection();
         } else {
-          alert('Server not available! Switching to local detection...');
+          setErrorMessage('Server unavailable. Switching to local detection...');
+          setTimeout(() => setErrorMessage(''), 3000);
           setUseServer(false);
           runMovenet();
         }
+      }).catch(err => {
+        setErrorMessage('Connection error. Using local detection...');
+        setTimeout(() => setErrorMessage(''), 3000);
+        setUseServer(false);
+        runMovenet();
       });
     } else {
       runMovenet();
@@ -268,14 +294,32 @@ function Yoga() {
   function stopPose() {
     setIsStartPose(false)
     clearInterval(interval)
+    setConfidence(0)
+    setIsLoading(false)
+  }
+
+  function toggleCamera() {
+    setFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user')
   }
 
   const runServerDetection = async () => {
+    console.log('Loading pose classifier for server mode...')
+    const poseClassifier = await tf.loadLayersModel('https://models.s3.jp-tok.cloud-object-storage.appdomain.cloud/model.json')
+    console.log('Pose classifier loaded')
+    
     const countAudio = new Audio(count);
     countAudio.loop = true;
     
     // Create a hidden canvas for capturing frames
     const captureCanvas = document.createElement('canvas');
+    
+    // Keypoint names in MoveNet order
+    const keypointNames = [
+      'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
+      'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+      'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
+      'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
+    ];
     
     interval = setInterval(async () => {
       if (
@@ -283,6 +327,8 @@ function Yoga() {
         webcamRef.current !== null &&
         webcamRef.current.video.readyState === 4
       ) {
+        setIsLoading(true) // Start loading
+        
         const video = webcamRef.current.video;
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
@@ -295,47 +341,113 @@ function Yoga() {
         const base64Image = imageDataToBase64(captureCanvas, video);
         
         // Send to server
-        const keypoints = await detectPoseOnServer(base64Image);
+        const serverKeypoints = await detectPoseOnServer(base64Image);
         
-        if (!keypoints || keypoints.length === 0) {
+        setIsLoading(false) // Stop loading
+        
+        if (!serverKeypoints || serverKeypoints.length === 0) {
           setDetectionStatus('No pose detected - move into frame');
+          setConfidence(0);
           const ctx = canvasRef.current.getContext('2d');
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          skeletonColor = 'rgb(255,255,255)';
+          flag = false;
+          countAudio.pause();
+          countAudio.currentTime = 0;
           return;
         }
         
-        setDetectionStatus(`✓ Server detected! ${keypoints.length} keypoints`);
+        setDetectionStatus(`✓ Server detected! ${serverKeypoints.length} keypoints`);
+        
+        // Add names to keypoints
+        const keypoints = serverKeypoints.map((kp, i) => ({
+          ...kp,
+          name: keypointNames[i],
+          x: kp.x,
+          y: kp.y,
+          score: kp.score
+        }));
         
         // Draw keypoints on canvas
         const ctx = canvasRef.current.getContext('2d');
         ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         
-        // Convert normalized coordinates to pixel coordinates
-        keypoints.forEach((keypoint, i) => {
-          if (keypoint.score > 0.2 && keypoint.name !== 'left_eye' && keypoint.name !== 'right_eye') {
-            const x = keypoint.x * videoWidth;
-            const y = keypoint.y * videoHeight;
-            drawPoint(ctx, x, y, 8, 'rgb(255,255,255)');
+        let notDetected = 0;
+        
+        // Draw skeleton and prepare input for classifier
+        const input = keypoints.map((keypoint) => {
+          if (keypoint.score > 0.2) {
+            if (keypoint.name !== 'left_eye' && keypoint.name !== 'right_eye') {
+              const x = keypoint.x * videoWidth;
+              const y = keypoint.y * videoHeight;
+              drawPoint(ctx, x, y, 8, skeletonColor);
+              
+              // Draw connections
+              if (keypointConnections[keypoint.name]) {
+                keypointConnections[keypoint.name].forEach(targetName => {
+                  const targetKeypoint = keypoints.find(kp => kp.name === targetName);
+                  if (targetKeypoint && targetKeypoint.score > 0.2) {
+                    const x2 = targetKeypoint.x * videoWidth;
+                    const y2 = targetKeypoint.y * videoHeight;
+                    drawSegment(ctx, [x, y], [x2, y2], skeletonColor);
+                  }
+                });
+              }
+            }
+          } else {
+            notDetected += 1;
           }
+          return [keypoint.x * videoWidth, keypoint.y * videoHeight];
         });
         
-        // Draw connections
-        const connections = keypointConnections;
-        keypoints.forEach((keypoint, i) => {
-          if (keypoint.score > 0.2 && connections[keypoint.name]) {
-            const x1 = keypoint.x * videoWidth;
-            const y1 = keypoint.y * videoHeight;
+        if (notDetected > 4) {
+          skeletonColor = 'rgb(255,255,255)';
+          flag = false;
+          countAudio.pause();
+          countAudio.currentTime = 0;
+          return;
+        }
+        
+        // Run pose classification
+        try {
+          const processedInput = landmarks_to_embedding(input);
+          const classification = poseClassifier.predict(processedInput);
+          
+          classification.array().then((data) => {
+            const classNo = CLASS_NO[currentPose];
+            const poseConfidence = data[0][classNo] * 100;
+            setConfidence(Math.round(poseConfidence));
+            console.log('Pose confidence:', poseConfidence.toFixed(1) + '%');
             
-            connections[keypoint.name].forEach(targetName => {
-              const targetKeypoint = keypoints.find(kp => kp.name === targetName);
-              if (targetKeypoint && targetKeypoint.score > 0.2) {
-                const x2 = targetKeypoint.x * videoWidth;
-                const y2 = targetKeypoint.y * videoHeight;
-                drawSegment(ctx, [x1, y1], [x2, y2], skeletonColor);
+            // Color-coded skeleton based on confidence
+            if (poseConfidence >= 97) {
+              if (!flag) {
+                countAudio.play();
+                setStartingTime(new Date(Date()).getTime());
+                flag = true;
               }
-            });
-          }
-        });
+              setCurrentTime(new Date(Date()).getTime());
+              skeletonColor = 'rgb(0,255,0)'; // Green - Perfect!
+            } else if (poseConfidence >= 80) {
+              flag = false;
+              skeletonColor = 'rgb(255,165,0)'; // Orange - Almost there
+              countAudio.pause();
+              countAudio.currentTime = 0;
+            } else if (poseConfidence >= 50) {
+              flag = false;
+              skeletonColor = 'rgb(255,255,0)'; // Yellow - Getting close
+              countAudio.pause();
+              countAudio.currentTime = 0;
+            } else {
+              flag = false;
+              skeletonColor = 'rgb(255,255,255)'; // White - Try again
+              countAudio.pause();
+              countAudio.currentTime = 0;
+            }
+          });
+        } catch (err) {
+          console.error('Classification error:', err);
+        }
       }
     }, 500); // 500ms for server round-trip
   };
@@ -347,20 +459,79 @@ function Yoga() {
       <div className="yoga-container">
         <div className="performance-container">
             <div className="pose-performance">
-              <h4>Pose Time: {poseTime} s</h4>
+              <h4 style={{ fontSize: '24px', margin: '5px 0' }}>⏱️ {poseTime.toFixed(1)}s</h4>
             </div>
             <div className="pose-performance">
-              <h4>Best: {bestPerform} s</h4>
+              <h4 style={{ fontSize: '18px', margin: '5px 0' }}>🏆 Best: {bestPerform.toFixed(1)}s</h4>
             </div>
           </div>
+        
+        {/* Confidence Meter */}
+        <div style={{ padding: '10px 20px', textAlign: 'center' }}>
+          <div style={{ marginBottom: '5px', color: 'white', fontSize: '14px', fontWeight: 'bold' }}>
+            Accuracy: {confidence}%
+          </div>
+          <div style={{ 
+            width: '100%', 
+            height: '20px', 
+            backgroundColor: '#333', 
+            borderRadius: '10px',
+            overflow: 'hidden',
+            border: '2px solid #555'
+          }}>
+            <div style={{ 
+              width: `${confidence}%`, 
+              height: '100%', 
+              backgroundColor: confidence >= 97 ? '#00ff00' : confidence >= 80 ? '#ffa500' : confidence >= 50 ? '#ffff00' : '#fff',
+              transition: 'width 0.3s ease, background-color 0.3s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              color: '#000'
+            }}>
+              {confidence > 10 && `${confidence}%`}
+            </div>
+          </div>
+          <div style={{ marginTop: '5px', fontSize: '12px', color: '#aaa' }}>
+            {confidence >= 97 ? '✓ Perfect!' : confidence >= 80 ? '⚠️ Almost there!' : confidence >= 50 ? '↗️ Getting close' : '↻ Keep trying'}
+          </div>
+        </div>
+
+        {/* Error Messages */}
+        {errorMessage && (
+          <div style={{ 
+            padding: '10px', 
+            margin: '10px 20px', 
+            backgroundColor: 'rgba(255, 165, 0, 0.2)', 
+            border: '1px solid orange',
+            borderRadius: '5px',
+            color: 'orange',
+            fontSize: '14px',
+            textAlign: 'center'
+          }}>
+            ⚠️ {errorMessage}
+          </div>
+        )}
+
+        {/* Loading Indicator */}
+        {isLoading && (
+          <div style={{ textAlign: 'center', color: 'white', fontSize: '14px', margin: '5px 0' }}>
+            <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Processing...
+          </div>
+        )}
+
         <div style={{ textAlign: 'center', color: 'white', margin: '10px 0', fontSize: '16px', fontWeight: 'bold' }}>
           {detectionStatus}
         </div>
+        
         <div style={{ position: 'relative', display: 'inline-block' }}>
           
           <Webcam 
           id="webcam"
           ref={webcamRef}
+          videoConstraints={{ facingMode }}
           style={{
             display: 'block',
             margin: '0 auto',
@@ -390,10 +561,28 @@ function Yoga() {
           </div>
          
         </div>
-        <button
-          onClick={stopPose}
-          className="secondary-btn"    
-        >Stop Pose</button>
+        
+        <div style={{ textAlign: 'center', margin: '15px 0' }}>
+          <button
+            onClick={toggleCamera}
+            style={{
+              padding: '10px 20px',
+              margin: '0 10px',
+              backgroundColor: '#555',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              fontSize: '16px',
+              cursor: 'pointer'
+            }}
+          >
+            🔄 Flip Camera
+          </button>
+          <button
+            onClick={stopPose}
+            className="secondary-btn"    
+          >Stop Pose</button>
+        </div>
       </div>
     )
   }
