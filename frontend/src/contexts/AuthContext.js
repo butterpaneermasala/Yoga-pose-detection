@@ -15,34 +15,122 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('yogaToken'));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [apiStatus, setApiStatus] = useState('checking'); // 'checking', 'production', 'local', 'offline'
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  const PRODUCTION_API_URL = process.env.REACT_APP_API_URL || 'https://yoga-pose-detection-1.onrender.com/api';
+  const LOCAL_API_URL = process.env.REACT_APP_LOCAL_API_URL || 'http://localhost:5000/api';
+  
+  const [currentApiUrl, setCurrentApiUrl] = useState(PRODUCTION_API_URL);
 
-  // API call helper
+  // Check API health
+  const checkApiHealth = useCallback(async () => {
+    try {
+      setApiStatus('checking');
+      
+      // Try production first
+      try {
+        const response = await fetch(`${PRODUCTION_API_URL}/health`, { 
+          method: 'GET',
+          timeout: 5000 
+        });
+        if (response.ok) {
+          setCurrentApiUrl(PRODUCTION_API_URL);
+          setApiStatus('production');
+          return 'production';
+        }
+      } catch (prodError) {
+        console.warn('Production API health check failed:', prodError.message);
+      }
+
+      // Try local if production fails
+      try {
+        const response = await fetch(`${LOCAL_API_URL}/health`, { 
+          method: 'GET',
+          timeout: 3000 
+        });
+        if (response.ok) {
+          setCurrentApiUrl(LOCAL_API_URL);
+          setApiStatus('local');
+          return 'local';
+        }
+      } catch (localError) {
+        console.warn('Local API health check failed:', localError.message);
+      }
+
+      // Both failed
+      setApiStatus('offline');
+      return 'offline';
+    } catch (error) {
+      console.error('API health check error:', error);
+      setApiStatus('offline');
+      return 'offline';
+    }
+  }, [PRODUCTION_API_URL, LOCAL_API_URL]);
+
+  // API call helper with fallback
   const apiCall = useCallback(async (endpoint, options = {}) => {
-    const url = `${API_BASE_URL}${endpoint}`;
-    const config = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...options.headers,
-      },
-      ...options,
+    const tryApiCall = async (baseUrl) => {
+      const url = `${baseUrl}${endpoint}`;
+      const config = {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+          ...options.headers,
+        },
+        ...options,
+      };
+
+      const response = await fetch(url, config);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Something went wrong');
+      }
+
+      return data;
     };
 
-    const response = await fetch(url, config);
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || 'Something went wrong');
+    try {
+      // Try production API first
+      const result = await tryApiCall(currentApiUrl);
+      return result;
+    } catch (error) {
+      console.warn(`API call failed with ${currentApiUrl}:`, error.message);
+      
+      // If production fails and we're not already using local, try local
+      if (currentApiUrl !== LOCAL_API_URL) {
+        try {
+          console.log('Falling back to local API...');
+          setCurrentApiUrl(LOCAL_API_URL);
+          const result = await tryApiCall(LOCAL_API_URL);
+          return result;
+        } catch (localError) {
+          console.error('Local API also failed:', localError.message);
+          // Switch back to production for next attempt
+          setCurrentApiUrl(PRODUCTION_API_URL);
+          throw new Error(`Both production and local APIs failed. Production: ${error.message}, Local: ${localError.message}`);
+        }
+      } else {
+        // If local fails, try production
+        try {
+          console.log('Local API failed, trying production...');
+          setCurrentApiUrl(PRODUCTION_API_URL);
+          const result = await tryApiCall(PRODUCTION_API_URL);
+          return result;
+        } catch (prodError) {
+          console.error('Production API also failed:', prodError.message);
+          throw new Error(`Both APIs failed. Local: ${error.message}, Production: ${prodError.message}`);
+        }
+      }
     }
+  }, [token, currentApiUrl, PRODUCTION_API_URL, LOCAL_API_URL]);
 
-    return data;
-  }, [token, API_BASE_URL]);
-
-  // Verify token on app load
+  // Check API health and verify token on app load
   useEffect(() => {
-    const verifyToken = async () => {
+    const initializeApp = async () => {
+      // First check API health
+      await checkApiHealth();
+      
       if (!token) {
         setLoading(false);
         return;
@@ -69,8 +157,8 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    verifyToken();
-  }, [token, apiCall]);
+    initializeApp();
+  }, [token, apiCall, checkApiHealth]);
 
   // Login function
   const login = async (loginData) => {
@@ -93,9 +181,14 @@ export const AuthProvider = ({ children }) => {
         return { success: true, message: response.message };
       }
     } catch (error) {
-      const errorMessage = error.message.includes('fetch') || error.message.includes('NetworkError')
-        ? 'Cannot connect to server. Please make sure the backend is running on port 5000.'
-        : error.message;
+      let errorMessage = error.message;
+      
+      if (error.message.includes('fetch') || error.message.includes('NetworkError')) {
+        errorMessage = `Cannot connect to server. Current API: ${currentApiUrl === PRODUCTION_API_URL ? 'Production (Render)' : 'Local'}. ${error.message}`;
+      } else if (error.message.includes('Both APIs failed')) {
+        errorMessage = 'Both production and local servers are unavailable. Please try again later.';
+      }
+      
       setError(errorMessage);
       return { success: false, message: errorMessage };
     } finally {
@@ -229,6 +322,9 @@ export const AuthProvider = ({ children }) => {
     loading,
     error,
     isAuthenticated: !!user,
+    apiStatus,
+    currentApiUrl,
+    checkApiHealth,
     login,
     register,
     logout,

@@ -13,8 +13,23 @@ import yoga6 from "../../utils/images/yoga6.png";
 import "./Home.css";
 
 export default function Home() {
-  const { user, logout } = useAuth();
+  const { user, logout, apiStatus, currentApiUrl, checkApiHealth } = useAuth();
   const photos = [yoga1, yoga2, yoga3, yoga4, yoga5, yoga6];
+
+  const getApiStatusInfo = () => {
+    switch (apiStatus) {
+      case 'production':
+        return { text: '🌐 Production', color: '#4CAF50', title: 'Connected to Render server' };
+      case 'local':
+        return { text: '🏠 Local', color: '#FF9800', title: 'Connected to local server' };
+      case 'offline':
+        return { text: '❌ Offline', color: '#F44336', title: 'No server connection' };
+      default:
+        return { text: '🔄 Checking', color: '#2196F3', title: 'Checking server status' };
+    }
+  };
+
+  const statusInfo = getApiStatusInfo();
 
   const yogaTexts = [
     "BREATHE DEEPLY", "MEDITATION", "YOGA ASANA", "BALANCE", "INNER PEACE",
@@ -40,6 +55,22 @@ export default function Home() {
         <h1 className="home-heading">PoseMinds</h1>
         <div className="header-buttons">
           <span className="welcome-text">Welcome, {user?.username || user?.profile?.firstName || 'Yogi'}!</span>
+          <div 
+            className="api-status" 
+            style={{ 
+              background: statusInfo.color, 
+              color: 'white',
+              padding: '4px 8px',
+              borderRadius: '12px',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+            title={statusInfo.title}
+            onClick={checkApiHealth}
+          >
+            {statusInfo.text}
+          </div>
           <Link to="/about">
             <button className="btn btn-secondary">About</button>
           </Link>
