@@ -13,7 +13,8 @@ export default function Auth() {
     firstName: '',
     lastName: '',
     age: '',
-    experienceLevel: 'beginner'
+    experienceLevel: 'beginner',
+    login: ''
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);

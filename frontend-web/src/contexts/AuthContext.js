@@ -18,8 +18,8 @@ export const AuthProvider = ({ children }) => {
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  // API call helper
-  const apiCall = useCallback(async (endpoint, options = {}) => {
+  // API call helper with timeout and retry
+  const apiCall = useCallback(async (endpoint, options = {}, retries = 2) => {
     const url = `${API_BASE_URL}${endpoint}`;
     const config = {
       headers: {
@@ -30,14 +30,33 @@ export const AuthProvider = ({ children }) => {
       ...options,
     };
 
-    const response = await fetch(url, config);
-    const data = await response.json();
+    // Add timeout to fetch (60 seconds for Render cold starts)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+    
+    try {
+      const response = await fetch(url, { ...config, signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.message || 'Something went wrong');
+      if (!response.ok) {
+        throw new Error(data.message || 'Something went wrong');
+      }
+
+      return data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      // Retry on network errors if retries left
+      if (retries > 0 && (error.name === 'AbortError' || error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
+        console.log(`Retrying... (${retries} attempts left). Backend may be waking up...`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        return apiCall(endpoint, options, retries - 1);
+      }
+      
+      throw error;
     }
-
-    return data;
   }, [token, API_BASE_URL]);
 
   // Verify token on app load
@@ -77,11 +96,22 @@ export const AuthProvider = ({ children }) => {
     try {
       setError('');
       setLoading(true);
+      setError('Waking up server... This may take up to 60 seconds on first request.');
 
+      // Wake up the server first
+      try {
+        await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+      } catch (e) {
+        // Ignore wake-up errors, proceed with login
+      }
+
+      setError('Logging in...');
       const response = await apiCall('/auth/login', {
         method: 'POST',
         body: JSON.stringify(loginData),
       });
+      
+      setError(''); // Clear the connecting message
 
       if (response.success) {
         const { token: newToken, user: userData } = response;
@@ -93,8 +123,8 @@ export const AuthProvider = ({ children }) => {
         return { success: true, message: response.message };
       }
     } catch (error) {
-      const errorMessage = error.message.includes('fetch') || error.message.includes('NetworkError')
-        ? 'Cannot connect to server. Please make sure the backend is running on port 5000.'
+      const errorMessage = error.message.includes('fetch') || error.message.includes('NetworkError') || error.message.includes('Failed to fetch')
+        ? `Cannot connect to server at ${API_BASE_URL}. Please check your internet connection and try again.`
         : error.message;
       setError(errorMessage);
       return { success: false, message: errorMessage };
@@ -108,11 +138,22 @@ export const AuthProvider = ({ children }) => {
     try {
       setError('');
       setLoading(true);
+      setError('Waking up server... This may take up to 60 seconds on first request.');
 
+      // Wake up the server first
+      try {
+        await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+      } catch (e) {
+        // Ignore wake-up errors, proceed with register
+      }
+
+      setError('Creating account...');
       const response = await apiCall('/auth/register', {
         method: 'POST',
         body: JSON.stringify(registerData),
       });
+      
+      setError(''); // Clear the connecting message
 
       if (response.success) {
         const { token: newToken, user: userData } = response;

@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { CapacitorHttp } from '@capacitor/core';
 
 const AuthContext = createContext();
+
+// Check if running in Capacitor (native app)
+const isNative = () => {
+  return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -18,26 +24,81 @@ export const AuthProvider = ({ children }) => {
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  // API call helper
-  const apiCall = useCallback(async (endpoint, options = {}) => {
+  // Log API URL on mount
+  useEffect(() => {
+    console.log('🌐 API_BASE_URL:', API_BASE_URL);
+    console.log('🌐 process.env.REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+  }, [API_BASE_URL]);
+
+  // API call helper with timeout and retry
+  const apiCall = useCallback(async (endpoint, options = {}, retries = 2) => {
     const url = `${API_BASE_URL}${endpoint}`;
-    const config = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...options.headers,
-      },
-      ...options,
+    console.log('📡 API Call:', url, options.method || 'GET', 'Native:', isNative());
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
     };
 
-    const response = await fetch(url, config);
-    const data = await response.json();
+    try {
+      let response, data;
 
-    if (!response.ok) {
-      throw new Error(data.message || 'Something went wrong');
+      // Use Capacitor HTTP for native apps to bypass WebView restrictions
+      if (isNative()) {
+        console.log('Using Capacitor HTTP (native)');
+        const capResponse = await CapacitorHttp.request({
+          url: url,
+          method: options.method || 'GET',
+          headers: headers,
+          data: options.body ? JSON.parse(options.body) : undefined,
+          readTimeout: 60000,
+          connectTimeout: 60000
+        });
+        
+        console.log('✅ Capacitor Response status:', capResponse.status);
+        
+        if (capResponse.status >= 400) {
+          throw new Error(capResponse.data.message || 'Something went wrong');
+        }
+        
+        return capResponse.data;
+      } else {
+        // Use fetch for web
+        console.log('Using fetch (web)');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        
+        response = await fetch(url, {
+          method: options.method || 'GET',
+          headers: headers,
+          body: options.body,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        console.log('✅ Response status:', response.status);
+        
+        data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Something went wrong');
+        }
+
+        return data;
+      }
+    } catch (error) {
+      console.error('❌ API Error:', error.name, error.message);
+      
+      // Retry on network errors if retries left
+      if (retries > 0 && (error.name === 'AbortError' || error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('network'))) {
+        console.log(`🔄 Retrying... (${retries} attempts left). Backend may be waking up...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return apiCall(endpoint, options, retries - 1);
+      }
+      
+      throw error;
     }
-
-    return data;
   }, [token, API_BASE_URL]);
 
   // Verify token on app load
@@ -77,11 +138,34 @@ export const AuthProvider = ({ children }) => {
     try {
       setError('');
       setLoading(true);
+      setError('Waking up server... This may take up to 60 seconds on first request.');
 
+      // Wake up the server first
+      try {
+        console.log('🔔 Waking up server at:', `${API_BASE_URL}/health`);
+        if (isNative()) {
+          await CapacitorHttp.request({
+            url: `${API_BASE_URL}/health`,
+            method: 'GET'
+          });
+        } else {
+          await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+        }
+        console.log('💚 Health check completed');
+      } catch (e) {
+        console.error('⚠️ Health check failed:', e.message);
+        // Ignore wake-up errors, proceed with login
+      }
+
+      setError('Logging in...');
+      console.log('🔐 Attempting login with data:', { email: loginData.email });
       const response = await apiCall('/auth/login', {
         method: 'POST',
         body: JSON.stringify(loginData),
       });
+      console.log('🎉 Login successful:', response.success);
+      
+      setError(''); // Clear the connecting message
 
       if (response.success) {
         const { token: newToken, user: userData } = response;
@@ -93,8 +177,8 @@ export const AuthProvider = ({ children }) => {
         return { success: true, message: response.message };
       }
     } catch (error) {
-      const errorMessage = error.message.includes('fetch') || error.message.includes('NetworkError')
-        ? 'Cannot connect to server. Please make sure the backend is running on port 5000.'
+      const errorMessage = error.message.includes('fetch') || error.message.includes('NetworkError') || error.message.includes('Failed to fetch')
+        ? `Cannot connect to server at ${API_BASE_URL}. Please check your internet connection and try again.`
         : error.message;
       setError(errorMessage);
       return { success: false, message: errorMessage };
@@ -108,11 +192,29 @@ export const AuthProvider = ({ children }) => {
     try {
       setError('');
       setLoading(true);
+      setError('Waking up server... This may take up to 60 seconds on first request.');
 
+      // Wake up the server first
+      try {
+        if (isNative()) {
+          await CapacitorHttp.request({
+            url: `${API_BASE_URL}/health`,
+            method: 'GET'
+          });
+        } else {
+          await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+        }
+      } catch (e) {
+        // Ignore wake-up errors, proceed with register
+      }
+
+      setError('Creating account...');
       const response = await apiCall('/auth/register', {
         method: 'POST',
         body: JSON.stringify(registerData),
       });
+      
+      setError(''); // Clear the connecting message
 
       if (response.success) {
         const { token: newToken, user: userData } = response;

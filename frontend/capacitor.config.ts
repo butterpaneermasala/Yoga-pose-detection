@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'Yoga Pose Detection',
   webDir: 'build',
   server: {
-    androidScheme: 'https'
+    hostname: 'localhost',
+    androidScheme: 'http'
   }
 };
 
