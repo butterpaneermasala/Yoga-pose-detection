@@ -42,12 +42,16 @@ function Yoga() {
     attempts: 1
   })
 
+
+
   const [startingTime, setStartingTime] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [poseTime, setPoseTime] = useState(0)
   const [bestPerform, setBestPerform] = useState(0)
   const [currentPose, setCurrentPose] = useState('Tree')
   const [isStartPose, setIsStartPose] = useState(false)
+  const [newBestTime, setNewBestTime] = useState(false)
+  const [previousBest, setPreviousBest] = useState(0)
   const [detectionStatus, setDetectionStatus] = useState('Waiting...')
   const [useServer, setUseServer] = useState(true) // Server mode by default
   const [confidence, setConfidence] = useState(0) // Pose confidence percentage
@@ -73,15 +77,31 @@ function Yoga() {
       setPoseTime(timeDiff)
     }
     if ((currentTime - startingTime) / 1000 > bestPerform) {
+      // New best time achieved!
+      if (bestPerform > 0) { // Only show notification if there was a previous best
+        setNewBestTime(true)
+        setPreviousBest(bestPerform)
+        // Hide notification after 3 seconds
+        setTimeout(() => setNewBestTime(false), 3000)
+        
+        // Voice feedback for new best
+        if (settings.voiceFeedback) {
+          setTimeout(() => {
+            voiceFeedback.speak(`New personal best! ${Math.round(timeDiff)} seconds!`)
+          }, 500)
+        }
+      }
       setBestPerform(timeDiff)
     }
-  }, [currentTime, startingTime, bestPerform])
+  }, [currentTime, startingTime, bestPerform, settings.voiceFeedback])
 
 
   useEffect(() => {
     setCurrentTime(0)
     setPoseTime(0)
     setBestPerform(0)
+    setNewBestTime(false)
+    setPreviousBest(0)
   }, [currentPose])
 
   // Cleanup effect to clear intervals on unmount
@@ -645,6 +665,30 @@ function Yoga() {
     return (
       <div className="yoga-container">
 
+        {/* New Best Time Notification */}
+        {newBestTime && (
+          <div style={{
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            padding: '15px 25px',
+            borderRadius: '10px',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            zIndex: 1000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            animation: 'slideDown 0.5s ease-out'
+          }}>
+            🎉 New Personal Best! 
+            <div style={{ fontSize: '14px', marginTop: '5px' }}>
+              Previous: {previousBest.toFixed(1)}s → New: {bestPerform.toFixed(1)}s
+            </div>
+          </div>
+        )}
+
         {/* Achievements Popup */}
         {showAchievements && (
           <div className="achievements-popup">
@@ -665,7 +709,7 @@ function Yoga() {
             <h4 style={{ fontSize: '20px', margin: '5px 0' }}>⏱️ {poseTime.toFixed(1)}s</h4>
           </div>
           <div className="pose-performance">
-            <h4 style={{ fontSize: '16px', margin: '5px 0' }}>🏆 Best: {Math.max(bestPerform, sessionDataRef.current.bestHold).toFixed(1)}s</h4>
+            <h4 style={{ fontSize: '16px', margin: '5px 0' }}>🏆 Best: {bestPerform.toFixed(1)}s</h4>
           </div>
           <div className="pose-performance">
             <h4 style={{ fontSize: '16px', margin: '5px 0' }}>✨ Perfect: {Math.round(sessionDataRef.current.perfectHolds)}</h4>

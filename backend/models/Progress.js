@@ -203,9 +203,19 @@ progressSchema.methods.calculateStats = function() {
     return total + pose.perfectHolds;
   }, 0);
   
-  // Calculate longest hold
+  // Calculate longest hold (ensure it's in seconds)
   this.longestHold = Object.values(this.poseStats).reduce((max, pose) => {
-    return Math.max(max, pose.bestHold);
+    let bestHold = pose.bestHold || 0;
+    // Be more aggressive with millisecond detection
+    // If the value is > 300 (5 minutes), it's likely in milliseconds
+    if (bestHold > 300) {
+      bestHold = bestHold / 1000;
+    }
+    // Cap at reasonable maximum (10 minutes for a single pose hold)
+    if (bestHold > 600) {
+      bestHold = 600;
+    }
+    return Math.max(max, bestHold);
   }, 0);
   
   // Calculate average accuracy
@@ -238,7 +248,18 @@ progressSchema.methods.addSession = function(sessionData) {
   // Update pose-specific stats
   const poseStats = this.poseStats[session.pose];
   poseStats.attempts += 1;
-  poseStats.bestHold = Math.max(poseStats.bestHold, session.bestHold);
+  
+  // Ensure bestHold is in seconds (be more aggressive with conversion)
+  let bestHold = session.bestHold;
+  if (bestHold > 300) { // If > 5 minutes, likely milliseconds
+    bestHold = bestHold / 1000;
+  }
+  // Cap at reasonable maximum (10 minutes for a single pose hold)
+  if (bestHold > 600) {
+    bestHold = 600;
+  }
+  
+  poseStats.bestHold = Math.max(poseStats.bestHold, bestHold);
   poseStats.perfectHolds += session.perfectHolds;
   poseStats.totalTime += session.duration;
   

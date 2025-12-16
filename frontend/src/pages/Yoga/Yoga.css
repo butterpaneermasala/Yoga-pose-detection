@@ -309,40 +309,14 @@
     }
 }
 
-/* Extra small phones */
-@media (max-width: 480px) {
-    .yoga-container {
-        padding: 5px;
+/* New Best Time Notification Animation */
+@keyframes slideDown {
+    from {
+        transform: translateX(-50%) translateY(-100px);
+        opacity: 0;
     }
-
-    .performance-container {
-        flex-wrap: wrap;
-        gap: 5px;
-        padding: 5px !important;
-    }
-
-    .pose-performance {
-        padding: 5px 8px !important;
-        min-width: calc(50% - 5px);
-    }
-
-    .pose-performance h4 {
-        font-size: 14px !important;
-    }
-
-    .pose-img {
-        width: 120px !important;
-        margin: 5px auto !important;
-    }
-
-    button {
-        font-size: 14px !important;
-        padding: 8px 16px !important;
-        margin: 5px !important;
-    }
-
-    .secondary-btn {
-        width: calc(50% - 10px);
-        display: inline-block;
+    to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
     }
 }
